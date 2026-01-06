@@ -105,6 +105,17 @@ def delete_task(task_id: int):
     conn.close()
     return {"status": "deleted"}
 
+# (שאר הקוד נשאר אותו דבר, הוספתי רק את הלוגיקה של הצוערים שלי)
+@app.get("/my-cadets/{company}")
+def get_my_cadets(company: str):
+    # כאן תוכל להגדיר מי הצוערים הספציפיים שתחת פיקודך
+    all_cadets = {
+        "א": ["יוסי כהן", "דניאל לוי", "איתי אברהם"],
+        "ב": ["נועה ברק", "גיא שמש", "עומר גולן"],
+        "ג": ["רועי פלד", "יובל כץ", "אורן רז"],
+    }
+    return all_cadets.get(company, [])
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
