@@ -18,7 +18,7 @@ export default function App() {
   const [detailTask, setDetailTask] = useState(null);
   const [askMoveModal, setAskMoveModal] = useState(null);
   const [dateMoveModal, setDateMoveModal] = useState(null);
-  const [selectedCadetTasks, setSelectedCadetTasks] = useState(null);
+  const [selectedCadetTasks, setSelectedCadetTasks] = useState(null); // חלון משימות צוער
 
   const [form, setForm] = useState({ title: "", assigned_cadet: "", due_date: "" });
 
@@ -37,7 +37,6 @@ export default function App() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // פונקציה חדשה להצגת תאריכים בכותרות
   const getWeekDaysWithDates = () => {
     return DAYS.map((dayName, index) => {
       const date = new Date(START_DATE);
@@ -129,20 +128,24 @@ export default function App() {
           </select>
         </div>
         <div style={{padding:'15px'}}>
-          <p style={s.label}>צוערים:</p>
-          {cadets.map(c => (
-            <div key={c} style={s.cadetItem} onClick={() => setSelectedCadetTasks({name: c, list: allTasks.filter(t => t.assigned_cadet === c)})}>
-              <span>👤 {c}</span>
-              <span style={s.taskCount}>{allTasks.filter(t => t.assigned_cadet === c).length}</span>
-            </div>
-          ))}
+          <p style={s.label}>רשימת צוערים (לחץ לצפייה במשימות):</p>
+          {cadets.map(c => {
+            const cadetTasks = allTasks.filter(t => t.assigned_cadet === c);
+            return (
+              <div key={c} style={s.cadetItem} onClick={() => setSelectedCadetTasks({name: c, list: cadetTasks})}>
+                <span>👤 {c}</span>
+                <span style={s.taskCount}>{cadetTasks.length}</span>
+              </div>
+            );
+          })}
         </div>
       </aside>
 
       <main style={s.main}>
+        {/* טבלת ריכוז עליונה */}
         <section style={s.dash}>
-          <h3 style={{marginTop:0}}>ריכוז משימות</h3>
-          <div style={{maxHeight:'200px', overflowY:'auto'}}>
+          <h3 style={{marginTop:0}}>ריכוז משימות פלוגתי</h3>
+          <div style={{maxHeight:'180px', overflowY:'auto'}}>
             <table style={s.sumTable}>
               <thead><tr><th>משימה</th><th>קטגוריה</th><th>יעד</th><th>צוער</th><th>סטטוס</th></tr></thead>
               <tbody>
@@ -160,6 +163,7 @@ export default function App() {
           </div>
         </section>
 
+        {/* הלוח השבועי */}
         <div style={s.tableBox}>
           <div style={s.weekHead}>
             <button style={s.nav} onClick={()=>setCurrentWeek(w=>Math.max(0,w-1))}>▶</button>
@@ -186,7 +190,7 @@ export default function App() {
                     <td key={day} style={s.td} onClick={()=>setAddModal({cat,day})}>
                       {tasks.filter(t=>t.category===cat && t.day===day).map(t=>(
                         <div key={t.id} onClick={e=>{e.stopPropagation(); setDetailTask(t)}} style={{...s.card, borderRight: `5px solid ${getStatus(t).border}`}}>
-                          <div style={{fontWeight:'bold'}}>{t.title}</div>
+                          <div style={{fontWeight:'bold', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{t.title}</div>
                           <div style={{fontSize:'10px'}}>{t.assigned_cadet}</div>
                         </div>
                       ))}
@@ -199,9 +203,40 @@ export default function App() {
         </div>
       </main>
 
-      {/* Modals (Ask, Date, Detail, Add, CadetTasks) remain the same as previous response */}
-      {/* ... (חלק המודלים מהקוד הקודם) ... */}
-      
+      {/* --- מודל: רשימת משימות של צוער ספציפי --- */}
+      {selectedCadetTasks && (
+        <div style={s.ovl} onClick={closeAll}>
+          <div style={{...s.modal, width:'450px'}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid #eee', paddingBottom:'10px'}}>
+              <h3 style={{margin:0}}>משימות של: {selectedCadetTasks.name}</h3>
+              <button onClick={closeAll} style={{background:'none', border:'none', fontSize:'20px', cursor:'pointer'}}>×</button>
+            </div>
+            <div style={{maxHeight:'400px', overflowY:'auto', marginTop:'15px'}}>
+              {selectedCadetTasks.list.length === 0 ? (
+                <p style={{textAlign:'center', color:'#666'}}>אין משימות משויכות לצוער זה.</p>
+              ) : (
+                selectedCadetTasks.list.map(t => (
+                  <div key={t.id} style={s.cadetTaskRow} onClick={() => { setDetailTask(t); setSelectedCadetTasks(null); }}>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:'bold'}}>{t.title}</div>
+                      <div style={{fontSize:'12px', color:'#666'}}>{t.category} | שבוע {t.week}</div>
+                    </div>
+                    <div style={{textAlign:'left'}}>
+                       <div style={{fontSize:'11px', marginBottom:'4px'}}>יעד: {t.due_date || "ללא"}</div>
+                       <span style={{...s.stBadge, background: getStatus(t).bg, color: getStatus(t).color, fontSize:'10px'}}>
+                        {getStatus(t).label}
+                       </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <button style={{...s.btnP, marginTop:'15px'}} onClick={closeAll}>סגור</button>
+          </div>
+        </div>
+      )}
+
+      {/* --- שאר המודלים (אותו דבר כמו קודם) --- */}
       {askMoveModal && (
         <div style={s.ovl}>
           <div style={s.modal}>
@@ -233,15 +268,24 @@ export default function App() {
       {detailTask && (
         <div style={s.ovl} onClick={closeAll}>
           <div style={s.modal} onClick={e=>e.stopPropagation()}>
-            <h3>עריכה</h3>
+            <h3>עריכת משימה</h3>
             <input value={detailTask.title} style={s.input} onChange={e=>setDetailTask({...detailTask, title:e.target.value})}/>
             <select value={detailTask.assigned_cadet} style={s.input} onChange={e=>setDetailTask({...detailTask, assigned_cadet:e.target.value})}>
-              <option value="">צוער</option>
+              <option value="">בחר צוער</option>
               {cadets.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
             <input type="date" value={detailTask.due_date || ""} style={s.input} onChange={e=>setDetailTask({...detailTask, due_date:e.target.value})}/>
-            <label><input type="checkbox" checked={detailTask.is_done} onChange={e=>setDetailTask({...detailTask, is_done:e.target.checked})}/> בוצע</label>
-            <button style={s.btnP} onClick={()=>handleUpdateClick(detailTask)}>שמור</button>
+            <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer'}}>
+                <input type="checkbox" style={{width:'18px', height:'18px'}} checked={detailTask.is_done} onChange={e=>setDetailTask({...detailTask, is_done:e.target.checked})}/> 
+                <span>סמן כבוצע</span>
+            </label>
+            <button style={s.btnP} onClick={()=>handleUpdateClick(detailTask)}>שמור עדכון</button>
+            <button style={{...s.btnD, background:'#fee2e2', color:'#b91c1c'}} onClick={async () => {
+                if(window.confirm("למחוק משימה זו?")) {
+                    await fetch(`${API_BASE}/tasks/${detailTask.id}`, { method: "DELETE" });
+                    closeAll(); fetchData();
+                }
+            }}>מחק משימה</button>
           </div>
         </div>
       )}
@@ -249,14 +293,15 @@ export default function App() {
       {addModal && (
         <div style={s.ovl} onClick={closeAll}>
           <div style={s.modal} onClick={e=>e.stopPropagation()}>
-            <h3>חדש: {addModal.cat}</h3>
-            <input placeholder="כותרת" style={s.input} onChange={e=>setForm({...form, title:e.target.value})}/>
+            <h3>חדש: {addModal.cat} ({addModal.day})</h3>
+            <input placeholder="כותרת המשימה" style={s.input} onChange={e=>setForm({...form, title:e.target.value})}/>
             <select style={s.input} onChange={e=>setForm({...form, assigned_cadet:e.target.value})}>
-              <option value="">צוער</option>
+              <option value="">שייך לצוער</option>
               {cadets.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
+            <label style={s.label}>תאריך יעד:</label>
             <input type="date" style={s.input} onChange={e=>setForm({...form, due_date:e.target.value})}/>
-            <button style={s.btnP} onClick={handleSave}>צור</button>
+            <button style={s.btnP} onClick={handleSave}>צור משימה</button>
           </div>
         </div>
       )}
@@ -264,30 +309,30 @@ export default function App() {
   );
 }
 
-// Styles remain the same
 const s = {
-  container: { display:'flex', height:'100vh', direction:'rtl', fontFamily:'system-ui, sans-serif', background:'#f8fafc' },
-  sidebar: { width:'250px', background:'#fff', borderLeft:'1px solid #e2e8f0', display:'flex', flexDirection:'column' },
-  sideHeader: { padding:'20px', borderBottom:'1px solid #f1f5f9' },
+  container: { display:'flex', height:'100vh', direction:'rtl', fontFamily:'system-ui, sans-serif', background:'#f8fafc', color:'#1e293b' },
+  sidebar: { width:'260px', background:'#fff', borderLeft:'1px solid #e2e8f0', display:'flex', flexDirection:'column', boxShadow:'2px 0 5px rgba(0,0,0,0.02)' },
+  sideHeader: { padding:'20px', borderBottom:'1px solid #f1f5f9', background:'#f8fafc' },
   main: { flex:1, padding:'24px', overflowY:'auto' },
   dash: { background:'#fff', padding:'20px', borderRadius:'16px', marginBottom:'24px', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' },
-  sumTable: { width:'100%', borderCollapse:'collapse', fontSize:'13px' },
-  row: { cursor:'pointer', borderBottom:'1px solid #f1f5f9', height:'40px', textAlign:'center' },
+  sumTable: { width:'100%', borderCollapse:'collapse', fontSize:'13px', textAlign:'center' },
+  row: { cursor:'pointer', borderBottom:'1px solid #f1f5f9', transition:'0.2s' },
   stBadge: { padding:'4px 10px', borderRadius:'99px', fontSize:'11px', fontWeight:'700' },
-  tableBox: { background:'#fff', padding:'20px', borderRadius:'16px' },
+  tableBox: { background:'#fff', padding:'20px', borderRadius:'16px', boxShadow:'0 1px 3px rgba(0,0,0,0.05)', overflowX:'auto' },
   weekHead: { display:'flex', justifyContent:'center', alignItems:'center', gap:'24px', marginBottom:'20px' },
-  mainTable: { width:'100%', borderCollapse:'collapse', tableLayout:'fixed' },
-  th: { background:'#1e293b', color:'#fff', padding:'10px', fontSize:'13px', border:'1px solid #334155', textAlign:'center' },
-  td: { border:'1px solid #f1f5f9', height:'90px', verticalAlign:'top', padding:'6px', cursor:'pointer' },
+  mainTable: { width:'100%', borderCollapse:'collapse', tableLayout:'fixed', minWidth:'800px' },
+  th: { background:'#1e293b', color:'#fff', padding:'12px', fontSize:'13px', border:'1px solid #334155' },
+  td: { border:'1px solid #f1f5f9', height:'95px', verticalAlign:'top', padding:'6px', cursor:'pointer', transition:'0.2s' },
   catTd: { background:'#f8fafc', fontWeight:'700', border:'1px solid #f1f5f9', textAlign:'center', fontSize:'13px' },
-  card: { background:'#fff', padding:'8px', borderRadius:'8px', marginBottom:'6px', fontSize:'12px', border:'1px solid #e2e8f0' },
-  ovl: { position:'fixed', inset:0, background:'rgba(15, 23, 42, 0.4)', display:'flex', justifyContent:'center', alignItems:'center', zIndex:50 },
-  modal: { background:'#fff', padding:'24px', borderRadius:'16px', width:'340px', display:'flex', flexDirection:'column', gap:'16px' },
-  input: { padding:'10px', borderRadius:'8px', border:'1px solid #cbd5e1', width:'100%', boxSizing:'border-box' },
+  card: { background:'#fff', padding:'8px', borderRadius:'8px', marginBottom:'6px', fontSize:'12px', border:'1px solid #e2e8f0', boxShadow:'0 2px 4px rgba(0,0,0,0.04)' },
+  ovl: { position:'fixed', inset:0, background:'rgba(15, 23, 42, 0.5)', backdropFilter:'blur(2px)', display:'flex', justifyContent:'center', alignItems:'center', zIndex:100 },
+  modal: { background:'#fff', padding:'24px', borderRadius:'16px', width:'350px', display:'flex', flexDirection:'column', gap:'16px', boxShadow:'0 20px 25px -5px rgba(0,0,0,0.1)' },
+  input: { padding:'10px', borderRadius:'8px', border:'1px solid #cbd5e1', width:'100%', boxSizing:'border-box', fontSize:'14px' },
   btnP: { background:'#2563eb', color:'#fff', border:'none', padding:'12px', borderRadius:'8px', cursor:'pointer', fontWeight:'600' },
-  btnD: { padding:'12px', borderRadius:'8px', border:'none', cursor:'pointer' },
-  nav: { border:'none', background:'#f1f5f9', width:'36px', height:'36px', borderRadius:'10px', cursor:'pointer' },
-  cadetItem: { padding:'10px 12px', borderBottom:'1px solid #f1f5f9', cursor:'pointer', display:'flex', justifyContent:'space-between' },
-  taskCount: { background:'#f1f5f9', padding:'2px 8px', borderRadius:'6px', fontSize:'11px' },
-  label: { fontSize:'12px', fontWeight:'700', color:'#64748b' }
+  btnD: { padding:'12px', borderRadius:'8px', border:'none', cursor:'pointer', fontWeight:'600' },
+  nav: { border:'none', background:'#f1f5f9', width:'36px', height:'36px', borderRadius:'10px', cursor:'pointer', fontSize:'18px' },
+  cadetItem: { padding:'12px', borderBottom:'1px solid #f1f5f9', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center', borderRadius:'8px', margin:'2px 0' },
+  taskCount: { background:'#f1f5f9', padding:'2px 8px', borderRadius:'6px', fontSize:'11px', fontWeight:'700', color:'#475569' },
+  label: { fontSize:'12px', fontWeight:'700', color:'#64748b', marginBottom:'8px' },
+  cadetTaskRow: { padding:'12px', borderBottom:'1px solid #f8fafc', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center', borderRadius:'8px', transition:'0.2s' }
 };
