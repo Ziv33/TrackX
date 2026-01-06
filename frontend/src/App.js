@@ -1,43 +1,77 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-// הגדרות קבועות
+// --- 1. Supabase Config ---
+// Replace these with your actual credentials from the Supabase dashboard
+const SUPABASE_URL = "http://localhost:54321";
+const SUPABASE_KEY = "YOUR_ANON_KEY";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
 const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const CATEGORIES = ["מבחן/מטלה", "הורדת מטלה", "תג\"ב", "ה\"ה", "א\"ת", "משוב", "סגל", "סימולציות"];
 const COMPANIES = ["א", "ב", "ג", "ד", "ה"];
 const API_BASE = "http://127.0.0.1:8000";
-const START_DATE = new Date("2026-01-04"); // יום ראשון של שבוע 0
+const START_DATE = new Date("2026-01-04");
 
 export default function App() {
-  // --- State ---
+  // --- Auth State ---
+  const [session, setSession] = useState(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  // --- App State ---
   const [company, setCompany] = useState("א");
   const [currentWeek, setCurrentWeek] = useState(0);
   const [tasks, setTasks] = useState([]);
   const [allTasks, setAllTasks] = useState([]);
   const [cadets, setCadets] = useState([]);
 
-  // ניהול חלונות קופצים
   const [addModal, setAddModal] = useState(null);
   const [detailTask, setDetailTask] = useState(null);
   const [askMoveModal, setAskMoveModal] = useState(null);
   const [dateMoveModal, setDateMoveModal] = useState(null);
   const [selectedCadetTasks, setSelectedCadetTasks] = useState(null);
 
-  // טופס הוספה
   const [form, setForm] = useState({ title: "", description: "", assigned_cadet: "", due_date: "" });
+
+  // --- Auth Logic ---
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) alert("שגיאה בכניסה: " + error.message);
+  };
+
+  const handleLogout = () => supabase.auth.signOut();
+
+  const getHeaders = useCallback(() => ({
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${session?.access_token}`
+  }), [session]);
 
   // --- Fetch Data ---
   const fetchData = useCallback(async () => {
+    if (!session) return;
     try {
+      const headers = getHeaders();
       const [tRes, allRes, cRes] = await Promise.all([
-        fetch(`${API_BASE}/tasks/${company}/${currentWeek}`),
-        fetch(`${API_BASE}/tasks-all/${company}`),
-        fetch(`${API_BASE}/cadets/${company}`)
+        fetch(`${API_BASE}/tasks/${company}/${currentWeek}`, { headers }),
+        fetch(`${API_BASE}/tasks-all/${company}`, { headers }),
+        fetch(`${API_BASE}/cadets/${company}`, { headers })
       ]);
+
+      if (tRes.status === 403) return console.warn("Unauthorized access to company");
+
       setTasks(await tRes.json());
       setAllTasks(await allRes.json());
       setCadets(await cRes.json());
     } catch (err) { console.error("Error fetching data:", err); }
-  }, [company, currentWeek]);
+  }, [company, currentWeek, session, getHeaders]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -81,7 +115,7 @@ export default function App() {
   const saveUpdate = async (task) => {
     await fetch(`${API_BASE}/tasks/${task.id}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
       body: JSON.stringify(task)
     });
     closeAll();
@@ -104,7 +138,10 @@ export default function App() {
       new_week: week,
       new_day: day
     });
-    await fetch(`${API_BASE}/tasks/move/${dateMoveModal.task.id}?${params.toString()}`, { method: "POST" });
+    await fetch(`${API_BASE}/tasks/move/${dateMoveModal.task.id}?${params.toString()}`, {
+        method: "POST",
+        headers: getHeaders()
+    });
     closeAll();
     fetchData();
   };
@@ -113,25 +150,45 @@ export default function App() {
     if (!form.title) return alert("חובה להזין כותרת");
     await fetch(`${API_BASE}/tasks/`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
       body: JSON.stringify({ ...form, company, week: currentWeek, category: addModal.cat, day: addModal.day })
     });
-    closeAll(); 
+    closeAll();
     fetchData();
   };
 
-  const closeAll = () => { 
-    setAddModal(null); setDetailTask(null); setAskMoveModal(null); 
+  const closeAll = () => {
+    setAddModal(null); setDetailTask(null); setAskMoveModal(null);
     setDateMoveModal(null); setSelectedCadetTasks(null);
-    setForm({title:"", description: "", assigned_cadet:"", due_date:""}); 
+    setForm({title:"", description: "", assigned_cadet:"", due_date:""});
   };
 
+  // --- Login Screen ---
+  if (!session) {
+    return (
+      <div dir="rtl" style={s.ovl}>
+        <div style={{...s.modal, width:'400px', textAlign:'center'}}>
+          <h1 style={{color:'#1e293b', marginBottom:'5px'}}>מגדלור</h1>
+          <p style={{color:'#64748b', marginBottom:'25px'}}>מערכת ניהול משימות קצונה</p>
+          <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:'15px'}}>
+            <input type="email" placeholder="אימייל" style={s.input} value={email} onChange={e=>setEmail(e.target.value)} required />
+            <input type="password" placeholder="סיסמה" style={s.input} value={password} onChange={e=>setPassword(e.target.value)} required />
+            <button type="submit" style={s.btnP}>התחבר למערכת</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Main App UI ---
   return (
     <div dir="rtl" style={s.container}>
-      {/* סרגל צד */}
       <aside style={s.sidebar}>
         <div style={s.sideHeader}>
-          <h3 style={{margin:0}}>ניהול פלוגה {company}</h3>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <h3 style={{margin:0}}>פלוגה {company}</h3>
+            <button onClick={handleLogout} style={{background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:'12px', fontWeight:'700'}}>התנתק</button>
+          </div>
           <select value={company} onChange={e=>setCompany(e.target.value)} style={{...s.input, marginTop:'10px', padding:'8px'}}>
             {COMPANIES.map(c=><option key={c} value={c}>פלוגה {c}</option>)}
           </select>
@@ -150,7 +207,6 @@ export default function App() {
         </div>
       </aside>
 
-      {/* תוכן מרכזי */}
       <main style={s.main}>
         <div style={s.tableBox}>
           <div style={s.weekHead}>
@@ -158,7 +214,7 @@ export default function App() {
             <h2 style={{margin:0}}>שבוע {currentWeek}</h2>
             <button style={s.nav} onClick={()=>setCurrentWeek(w=>w+1)}>◀</button>
           </div>
-          
+
           <table style={s.mainTable}>
             <thead>
               <tr>
@@ -192,19 +248,16 @@ export default function App() {
         </div>
       </main>
 
-      {/* --- מודל: הוספת משימה (רחב) --- */}
+      {/* Add Modal */}
       {addModal && (
         <div style={s.ovl} onClick={closeAll}>
           <div style={{...s.modal, width:'550px'}} onClick={e=>e.stopPropagation()}>
             <h2 style={{margin:0}}>משימה חדשה: {addModal.cat}</h2>
             <p style={{margin:0, color:'#64748b'}}>יום {addModal.day}, שבוע {currentWeek}</p>
-            
             <label style={s.label}>כותרת המשימה</label>
             <input placeholder="לדוגמה: הורדת התנסות ממש" style={s.input} onChange={e=>setForm({...form, title:e.target.value})}/>
-            
             <label style={s.label}>פירוט והנחיות</label>
             <textarea placeholder="פרט כאן מה נדרש לבצע..." style={{...s.input, minHeight:'120px', resize:'vertical'}} onChange={e=>setForm({...form, description:e.target.value})} />
-            
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
               <div>
                 <label style={s.label}>צוער אחראי</label>
@@ -218,7 +271,6 @@ export default function App() {
                 <input type="date" style={s.input} onChange={e=>setForm({...form, due_date:e.target.value})}/>
               </div>
             </div>
-            
             <div style={{display:'flex', gap:'12px', marginTop:'10px'}}>
               <button style={{...s.btnP, flex:2}} onClick={handleSave}>צור משימה</button>
               <button style={{...s.btnD, flex:1, background:'#f1f5f9'}} onClick={closeAll}>ביטול</button>
@@ -227,7 +279,7 @@ export default function App() {
         </div>
       )}
 
-      {/* --- מודל: עריכה ופירוט (רחב) --- */}
+      {/* Detail Modal */}
       {detailTask && (
         <div style={s.ovl} onClick={closeAll}>
           <div style={{...s.modal, width:'550px'}} onClick={e=>e.stopPropagation()}>
@@ -237,17 +289,10 @@ export default function App() {
                 {getStatus(detailTask).label}
               </span>
             </div>
-            
             <label style={s.label}>כותרת</label>
             <input value={detailTask.title} style={s.input} onChange={e=>setDetailTask({...detailTask, title:e.target.value})}/>
-            
             <label style={s.label}>פירוט מורחב</label>
-            <textarea 
-                value={detailTask.description || ""} 
-                style={{...s.input, minHeight:'150px', resize:'vertical'}} 
-                onChange={e=>setDetailTask({...detailTask, description:e.target.value})}
-            />
-            
+            <textarea value={detailTask.description || ""} style={{...s.input, minHeight:'150px', resize:'vertical'}} onChange={e=>setDetailTask({...detailTask, description:e.target.value})} />
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
                 <div>
                     <label style={s.label}>צוער אחראי</label>
@@ -261,21 +306,24 @@ export default function App() {
                     <input type="date" value={detailTask.due_date || ""} style={s.input} onChange={e=>setDetailTask({...detailTask, due_date:e.target.value})}/>
                 </div>
             </div>
-
             <label style={{display:'flex', alignItems:'center', gap:'12px', background:'#eff6ff', padding:'15px', borderRadius:'12px', cursor:'pointer', border:'1px solid #dbeafe'}}>
-                <input type="checkbox" style={{width:'22px', height:'22px'}} checked={detailTask.is_done} onChange={e=>setDetailTask({...detailTask, is_done:e.target.checked})}/> 
+                <input type="checkbox" style={{width:'22px', height:'22px'}} checked={detailTask.is_done} onChange={e=>setDetailTask({...detailTask, is_done:e.target.checked})}/>
                 <span style={{fontWeight:'bold', color:'#1e40af'}}>סמן כבוצע (יציע מעבר לשלב הבא)</span>
             </label>
-
             <div style={{display:'flex', gap:'12px'}}>
               <button style={{...s.btnP, flex:2}} onClick={()=>handleUpdateClick(detailTask)}>שמור שינויים</button>
-              <button style={{...s.btnD, flex:1, background:'#fee2e2', color:'#b91c1c'}} onClick={async () => { if(window.confirm("למחוק?")) { await fetch(`${API_BASE}/tasks/${detailTask.id}`, {method:"DELETE"}); closeAll(); fetchData(); } }}>מחק</button>
+              <button style={{...s.btnD, flex:1, background:'#fee2e2', color:'#b91c1c'}} onClick={async () => {
+                  if(window.confirm("למחוק?")) {
+                      await fetch(`${API_BASE}/tasks/${detailTask.id}`, {method:"DELETE", headers: getHeaders()});
+                      closeAll(); fetchData();
+                  }
+              }}>מחק</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* --- מודלים נוספים (שאלה, תאריך העברה, רשימת צוער) --- */}
+      {/* Logic Modals (Move, Cadet List, etc) */}
       {askMoveModal && (
         <div style={s.ovl}>
           <div style={s.modal}>
@@ -329,7 +377,7 @@ export default function App() {
   );
 }
 
-// --- Styles ---
+// --- Styles (Original Styles Preserved) ---
 const s = {
   container: { display:'flex', height:'100vh', direction:'rtl', fontFamily:'system-ui, -apple-system, sans-serif', background:'#f8fafc', color:'#1e293b' },
   sidebar: { width:'260px', background:'#fff', borderLeft:'1px solid #e2e8f0', display:'flex', flexDirection:'column', boxShadow:'2px 0 10px rgba(0,0,0,0.02)' },
