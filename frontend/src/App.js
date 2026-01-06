@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 // --- 1. Supabase Config ---
 const SUPABASE_URL = "http://localhost:54321";
-const SUPABASE_KEY = "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH"; // Get from 'npx supabase status'
+const SUPABASE_KEY = "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
@@ -32,7 +32,8 @@ export default function App() {
   const [dateMoveModal, setDateMoveModal] = useState(null);
   const [selectedCadetTasks, setSelectedCadetTasks] = useState(null);
 
-  const [form, setForm] = useState({ title: "", assigned_cadet: "", due_date: "" });
+  // Form State including Description
+  const [form, setForm] = useState({ title: "", description: "", assigned_cadet: "", due_date: "" });
 
   // --- Auth logic ---
   useEffect(() => {
@@ -49,7 +50,6 @@ export default function App() {
 
   const handleLogout = () => supabase.auth.signOut();
 
-  // Helper for Headers
   const getHeaders = useCallback(() => ({
     "Content-Type": "application/json",
     "Authorization": `Bearer ${session?.access_token}`
@@ -159,7 +159,7 @@ export default function App() {
   const closeAll = () => {
     setAddModal(null); setDetailTask(null); setAskMoveModal(null);
     setDateMoveModal(null); setSelectedCadetTasks(null);
-    setForm({title:"", assigned_cadet:"", due_date:""});
+    setForm({title:"", description: "", assigned_cadet:"", due_date:""});
   };
 
   // --- Render Login ---
@@ -178,7 +178,6 @@ export default function App() {
     );
   }
 
-  // --- Render App ---
   return (
     <div dir="rtl" style={s.container}>
       <aside style={s.sidebar}>
@@ -265,7 +264,77 @@ export default function App() {
         </div>
       </main>
 
-      {/* Modals remain the same but use headers now... */}
+      {/* --- Detail Task Modal (Modified) --- */}
+      {detailTask && (
+        <div style={s.ovl} onClick={closeAll}>
+          <div style={{...s.modal, width:'450px'}} onClick={e=>e.stopPropagation()}>
+            <h3 style={{margin:0}}>פרטי משימה</h3>
+
+            <label style={s.label}>כותרת</label>
+            <input value={detailTask.title} style={s.input} onChange={e=>setDetailTask({...detailTask, title:e.target.value})}/>
+
+            <label style={s.label}>תיאור מורחב</label>
+            <textarea
+              value={detailTask.description || ""}
+              style={{...s.input, minHeight:'100px', resize:'vertical'}}
+              placeholder="הוסף פרטים נוספים כאן..."
+              onChange={e=>setDetailTask({...detailTask, description:e.target.value})}
+            />
+
+            <label style={s.label}>צוער אחראי</label>
+            <select value={detailTask.assigned_cadet} style={s.input} onChange={e=>setDetailTask({...detailTask, assigned_cadet:e.target.value})}>
+              <option value="">בחר צוער</option>
+              {cadets.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+
+            <label style={s.label}>תאריך יעד</label>
+            <input type="date" value={detailTask.due_date || ""} style={s.input} onChange={e=>setDetailTask({...detailTask, due_date:e.target.value})}/>
+
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <input type="checkbox" checked={detailTask.is_done} onChange={e=>setDetailTask({...detailTask, is_done:e.target.checked})}/>
+              <span style={{fontSize:'14px', fontWeight:'600'}}>סמן כבוצע</span>
+            </div>
+
+            <div style={{display:'flex', gap:'10px', marginTop:'10px'}}>
+              <button style={{...s.btnP, flex:1}} onClick={()=>handleUpdateClick(detailTask)}>שמור שינויים</button>
+              <button style={{...s.btnD, background:'#fee2e2', color:'#dc2626'}} onClick={async () => {
+                  if(window.confirm("למחוק את המשימה לצמיתות?")) {
+                      await fetch(`${API_BASE}/tasks/${detailTask.id}`, { method: "DELETE", headers: getHeaders() });
+                      closeAll(); fetchData();
+                  }
+              }}>מחק</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Add Task Modal (Modified) --- */}
+      {addModal && (
+        <div style={s.ovl} onClick={closeAll}>
+          <div style={{...s.modal, width:'450px'}} onClick={e=>e.stopPropagation()}>
+            <h3 style={{margin:0}}>חדש: {addModal.cat} ({addModal.day})</h3>
+
+            <input placeholder="כותרת המשימה" style={s.input} onChange={e=>setForm({...form, title:e.target.value})}/>
+
+            <textarea
+              placeholder="תיאור המשימה והנחיות..."
+              style={{...s.input, minHeight:'100px', resize:'vertical'}}
+              onChange={e=>setForm({...form, description:e.target.value})}
+            />
+
+            <select style={s.input} onChange={e=>setForm({...form, assigned_cadet:e.target.value})}>
+              <option value="">בחר צוער</option>
+              {cadets.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+
+            <input type="date" style={s.input} onChange={e=>setForm({...form, due_date:e.target.value})}/>
+
+            <button style={s.btnP} onClick={handleSave}>צור משימה</button>
+          </div>
+        </div>
+      )}
+
+      {/* Other Modals (Cadet List, Move, etc) */}
       {selectedCadetTasks && (
         <div style={s.ovl} onClick={closeAll}>
           <div style={{...s.modal, width:'450px'}} onClick={e=>e.stopPropagation()}>
@@ -310,48 +379,10 @@ export default function App() {
           </div>
         </div>
       )}
-
-      {detailTask && (
-        <div style={s.ovl} onClick={closeAll}>
-          <div style={s.modal} onClick={e=>e.stopPropagation()}>
-            <h3>עריכת משימה</h3>
-            <input value={detailTask.title} style={s.input} onChange={e=>setDetailTask({...detailTask, title:e.target.value})}/>
-            <select value={detailTask.assigned_cadet} style={s.input} onChange={e=>setDetailTask({...detailTask, assigned_cadet:e.target.value})}>
-              <option value="">בחר צוער</option>
-              {cadets.map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
-            <input type="date" value={detailTask.due_date || ""} style={s.input} onChange={e=>setDetailTask({...detailTask, due_date:e.target.value})}/>
-            <label><input type="checkbox" checked={detailTask.is_done} onChange={e=>setDetailTask({...detailTask, is_done:e.target.checked})}/> בוצע</label>
-            <button style={s.btnP} onClick={()=>handleUpdateClick(detailTask)}>שמור</button>
-            <button style={s.btnD} onClick={async () => {
-                if(window.confirm("למחוק?")) {
-                    await fetch(`${API_BASE}/tasks/${detailTask.id}`, { method: "DELETE", headers: getHeaders() });
-                    closeAll(); fetchData();
-                }
-            }}>מחק</button>
-          </div>
-        </div>
-      )}
-
-      {addModal && (
-        <div style={s.ovl} onClick={closeAll}>
-          <div style={s.modal} onClick={e=>e.stopPropagation()}>
-            <h3>חדש: {addModal.cat} ({addModal.day})</h3>
-            <input placeholder="כותרת" style={s.input} onChange={e=>setForm({...form, title:e.target.value})}/>
-            <select style={s.input} onChange={e=>setForm({...form, assigned_cadet:e.target.value})}>
-              <option value="">צוער</option>
-              {cadets.map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
-            <input type="date" style={s.input} onChange={e=>setForm({...form, due_date:e.target.value})}/>
-            <button style={s.btnP} onClick={handleSave}>צור</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-// Styles remain as provided by you...
 const s = {
   container: { display:'flex', height:'100vh', direction:'rtl', fontFamily:'system-ui, sans-serif', background:'#f8fafc', color:'#1e293b' },
   sidebar: { width:'260px', background:'#fff', borderLeft:'1px solid #e2e8f0', display:'flex', flexDirection:'column' },
@@ -369,13 +400,13 @@ const s = {
   catTd: { background:'#f8fafc', fontWeight:'700', border:'1px solid #f1f5f9', textAlign:'center', fontSize:'13px' },
   card: { background:'#fff', padding:'8px', borderRadius:'8px', marginBottom:'6px', fontSize:'12px', border:'1px solid #e2e8f0' },
   ovl: { position:'fixed', inset:0, background:'rgba(15, 23, 42, 0.5)', backdropFilter:'blur(2px)', display:'flex', justifyContent:'center', alignItems:'center', zIndex:100 },
-  modal: { background:'#fff', padding:'24px', borderRadius:'16px', width:'350px', display:'flex', flexDirection:'column', gap:'16px' },
-  input: { padding:'10px', borderRadius:'8px', border:'1px solid #cbd5e1', width:'100%', boxSizing:'border-box' },
+  modal: { background:'#fff', padding:'24px', borderRadius:'16px', display:'flex', flexDirection:'column', gap:'16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' },
+  input: { padding:'10px', borderRadius:'8px', border:'1px solid #cbd5e1', width:'100%', boxSizing:'border-box', fontFamily:'inherit' },
   btnP: { background:'#2563eb', color:'#fff', border:'none', padding:'12px', borderRadius:'8px', cursor:'pointer', fontWeight:'600' },
   btnD: { padding:'12px', borderRadius:'8px', border:'none', cursor:'pointer', fontWeight:'600' },
   nav: { border:'none', background:'#f1f5f9', width:'36px', height:'36px', borderRadius:'10px', cursor:'pointer' },
   cadetItem: { padding:'12px', borderBottom:'1px solid #f1f5f9', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center' },
   taskCount: { background:'#f1f5f9', padding:'2px 8px', borderRadius:'6px', fontSize:'11px', fontWeight:'700' },
-  label: { fontSize:'12px', fontWeight:'700', color:'#64748b' },
+  label: { fontSize:'12px', fontWeight:'700', color:'#64748b', marginBottom:'-8px' },
   cadetTaskRow: { padding:'12px', borderBottom:'1px solid #f8fafc', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center' }
 };
