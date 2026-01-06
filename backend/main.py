@@ -25,12 +25,14 @@ class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = ""
     assigned_cadet: Optional[str] = ""
+    due_date: Optional[str] = "" # שדה חדש
 
 class TaskUpdate(BaseModel):
     title: str
     description: Optional[str] = ""
     is_done: bool
     assigned_cadet: str
+    due_date: Optional[str] = "" # שדה חדש
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -45,11 +47,13 @@ def init_db():
             title TEXT,
             description TEXT,
             is_done BOOLEAN DEFAULT 0,
-            assigned_cadet TEXT
+            assigned_cadet TEXT,
+            due_date TEXT  -- הוספת העמודה כאן
         )
     """)
     conn.commit()
     conn.close()
+
 
 init_db()
 
@@ -125,6 +129,39 @@ def delete_task(task_id: int):
     conn.close()
     return {"status": "deleted"}
 
+# --- Endpoint חדש להעברה אטומית בין שורות ---
+@app.post("/tasks/move/{task_id}")
+def move_task(task_id: int, next_category: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        # 1. שליפת המשימה הקיימת לפני המחיקה
+        c.execute("SELECT company, day, week, title, description, assigned_cadet, due_date FROM tasks WHERE id = ?", (task_id,))
+        row = c.fetchone()
+        
+        if not row:
+            return {"status": "error", "message": "Task not found"}
+
+        # פירוק הנתונים (Destructuring)
+        company, day, week, title, description, assigned_cadet, due_date = row
+
+        # 2. הכנסת המשימה החדשה לקטגוריה הבאה (is_done מתאפס ל-0)
+        c.execute("""
+            INSERT INTO tasks (company, category, day, week, title, description, is_done, assigned_cadet, due_date) 
+            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+        """, (company, next_category, day, week, title, description, assigned_cadet, due_date))
+
+        # 3. מחיקת המשימה הישנה מהשורה הקודמת
+        c.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+
+        conn.commit()
+        return {"status": "success", "new_category": next_category}
+    except Exception as e:
+        conn.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        conn.close()
+        
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
