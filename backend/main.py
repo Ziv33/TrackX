@@ -1,8 +1,8 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
-from typing import List, Optional
+from typing import Optional
 
 app = FastAPI()
 
@@ -16,18 +16,19 @@ app.add_middleware(
 
 DB_FILE = "army_tasks.db"
 
+# מודלים
 class TaskCreate(BaseModel):
     company: str
     category: str
     day: str
-    week: int  # נוסף שדה שבוע
+    week: int
     title: str
     description: Optional[str] = ""
     assigned_cadet: Optional[str] = ""
 
 class TaskUpdate(BaseModel):
     title: str
-    description: str
+    description: Optional[str] = ""
     is_done: bool
     assigned_cadet: str
 
@@ -55,7 +56,7 @@ init_db()
 CADETS_DATA = {
     "א": ["יוסי כהן", "דניאל לוי", "איתי אברהם"],
     "ב": ["נועה ברק", "גיא שמש", "עומר גולן"],
-    "ג": ["רועי פלד", "יובל כץ", "אורן רז"],
+    "ג": ["רועי פדל", "יובל כץ", "אורן רז"],
     "ד": ["מיכל דיין", "עמית חן", "נדב שגב"],
     "ה": ["ליאור זיו", "שחר פרי", "טל מור"]
 }
@@ -64,7 +65,7 @@ CADETS_DATA = {
 def get_cadets(company: str):
     return CADETS_DATA.get(company, [])
 
-# עדכון השליפה שתסנן לפי שבוע
+# משימות לשבוע ספציפי (לטבלה)
 @app.get("/tasks/{company}/{week}")
 def get_tasks(company: str, week: int):
     conn = sqlite3.connect(DB_FILE)
@@ -72,10 +73,28 @@ def get_tasks(company: str, week: int):
     c.execute("SELECT id, category, day, title, description, is_done, assigned_cadet FROM tasks WHERE company = ? AND week = ?", (company, week))
     rows = c.fetchall()
     conn.close()
-    return [{
-        "id": r[0], "category": r[1], "day": r[2], "title": r[3], 
-        "description": r[4], "is_done": bool(r[5]), "assigned_cadet": r[6]
-    } for r in rows]
+    return [{"id": r[0], "category": r[1], "day": r[2], "title": r[3], "description": r[4], "is_done": bool(r[5]), "assigned_cadet": r[6]} for r in rows]
+
+# --- התיקון הקריטי כאן ---
+# שליפת כל המשימות עם כל הפרטים עבור המודל בדשבורד
+@app.get("/tasks-all/{company}")
+def get_all_tasks(company: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    # הוספנו title, description ו-week לשאילתה
+    c.execute("SELECT id, title, description, week, is_done, assigned_cadet FROM tasks WHERE company = ?", (company,))
+    rows = c.fetchall()
+    conn.close()
+    return [
+        {
+            "id": r[0], 
+            "title": r[1], 
+            "description": r[2], 
+            "week": r[3], 
+            "is_done": bool(r[4]), 
+            "assigned_cadet": r[5]
+        } for r in rows
+    ]
 
 @app.post("/tasks/")
 def add_task(task: TaskCreate):
@@ -91,7 +110,7 @@ def add_task(task: TaskCreate):
 def update_task(task_id: int, task: TaskUpdate):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("""UPDATE tasks SET title=?, description=?, is_done=?, assigned_cadet=? WHERE id=?""",
+    c.execute("UPDATE tasks SET title=?, description=?, is_done=?, assigned_cadet=? WHERE id=?",
               (task.title, task.description, int(task.is_done), task.assigned_cadet, task_id))
     conn.commit()
     conn.close()
