@@ -1,34 +1,32 @@
 import { useEffect, useState } from "react";
 
 function App() {
-  const [role, setRole] = useState(null); // "commander" | "cadet"
+  const [role, setRole] = useState(null); // "commander" or "cadet"
   const [commanders, setCommanders] = useState([]);
   const [selectedCommander, setSelectedCommander] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Fetch from backend if exists
+    // Fetch data from backend
     fetch("http://localhost:8000/commanders")
-      .then((res) => res.json())
-      .then((data) => setCommanders(data))
-      .catch(() => {
-        // fallback mock data
-        setCommanders([
-          {
-            id: 1,
-            name: "Commander Alpha",
-            cadets: [
-              { id: 1, name: "Cadet One" },
-              { id: 2, name: "Cadet Two" },
-            ],
-          },
-          {
-            id: 2,
-            name: "Commander Bravo",
-            cadets: [{ id: 3, name: "Cadet Three" }],
-          },
-        ]);
+      .then((res) => {
+        if (!res.ok) throw new Error("Network response was not ok");
+        return res.json();
+      })
+      .then((data) => {
+        setCommanders(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Fetch error:", err);
+        setError("Could not load data from backend");
+        setLoading(false);
       });
   }, []);
+
+  if (loading) return <div style={{ padding: 20 }}>Loading...</div>;
+  if (error) return <div style={{ padding: 20 }}>{error}</div>;
 
   return (
     <div style={{ padding: 20 }}>
@@ -61,11 +59,15 @@ function App() {
           {selectedCommander && (
             <div style={{ marginTop: 15 }}>
               <h3>Cadets under {selectedCommander.name}</h3>
-              <ul>
-                {selectedCommander.cadets.map((cd) => (
-                  <li key={cd.id}>{cd.name}</li>
-                ))}
-              </ul>
+              {selectedCommander.cadets.length === 0 ? (
+                <p>No cadets assigned</p>
+              ) : (
+                <ul>
+                  {selectedCommander.cadets.map((cd) => (
+                    <li key={cd.id}>{cd.name}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
         </>
@@ -75,8 +77,8 @@ function App() {
         <>
           <h2>Cadet View</h2>
           <p>
-            As a cadet, you are assigned to a commander. In a real app, this
-            would be determined by login.
+            As a cadet, you will see your assigned commander here. This data
+            comes from the backend.
           </p>
         </>
       )}
