@@ -20,6 +20,7 @@ class TaskCreate(BaseModel):
     company: str
     category: str
     day: str
+    week: int  # נוסף שדה שבוע
     title: str
     description: Optional[str] = ""
     assigned_cadet: Optional[str] = ""
@@ -33,13 +34,13 @@ class TaskUpdate(BaseModel):
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # יצירת הטבלה עם שדה הצוער
     c.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             company TEXT,
             category TEXT,
             day TEXT,
+            week INTEGER, 
             title TEXT,
             description TEXT,
             is_done BOOLEAN DEFAULT 0,
@@ -51,7 +52,6 @@ def init_db():
 
 init_db()
 
-# רשימת הצוערים לכל פלוגה
 CADETS_DATA = {
     "א": ["יוסי כהן", "דניאל לוי", "איתי אברהם"],
     "ב": ["נועה ברק", "גיא שמש", "עומר גולן"],
@@ -64,11 +64,12 @@ CADETS_DATA = {
 def get_cadets(company: str):
     return CADETS_DATA.get(company, [])
 
-@app.get("/tasks/{company}")
-def get_tasks(company: str):
+# עדכון השליפה שתסנן לפי שבוע
+@app.get("/tasks/{company}/{week}")
+def get_tasks(company: str, week: int):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT id, category, day, title, description, is_done, assigned_cadet FROM tasks WHERE company = ?", (company,))
+    c.execute("SELECT id, category, day, title, description, is_done, assigned_cadet FROM tasks WHERE company = ? AND week = ?", (company, week))
     rows = c.fetchall()
     conn.close()
     return [{
@@ -80,8 +81,8 @@ def get_tasks(company: str):
 def add_task(task: TaskCreate):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("INSERT INTO tasks (company, category, day, title, description, assigned_cadet) VALUES (?, ?, ?, ?, ?, ?)",
-              (task.company, task.category, task.day, task.title, task.description, task.assigned_cadet))
+    c.execute("INSERT INTO tasks (company, category, day, week, title, description, assigned_cadet) VALUES (?, ?, ?, ?, ?, ?, ?)",
+              (task.company, task.category, task.day, task.week, task.title, task.description, task.assigned_cadet))
     conn.commit()
     conn.close()
     return {"status": "success"}
@@ -104,17 +105,6 @@ def delete_task(task_id: int):
     conn.commit()
     conn.close()
     return {"status": "deleted"}
-
-# (שאר הקוד נשאר אותו דבר, הוספתי רק את הלוגיקה של הצוערים שלי)
-@app.get("/my-cadets/{company}")
-def get_my_cadets(company: str):
-    # כאן תוכל להגדיר מי הצוערים הספציפיים שתחת פיקודך
-    all_cadets = {
-        "א": ["יוסי כהן", "דניאל לוי", "איתי אברהם"],
-        "ב": ["נועה ברק", "גיא שמש", "עומר גולן"],
-        "ג": ["רועי פלד", "יובל כץ", "אורן רז"],
-    }
-    return all_cadets.get(company, [])
 
 if __name__ == "__main__":
     import uvicorn
