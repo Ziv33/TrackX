@@ -1,70 +1,98 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
-const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-const CATEGORIES = ["Food", "Clean", "Sleep"];
+const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+const CATEGORIES = ["מבחן/מטלה", "הורדת מטלה", "תג\"ב", "ה\"ה", "א\"ת", "משוב", "סגל", "סימולציות"];
+const COMPANIES = ["א", "ב", "ג", "ד", "ה"];
 
-function App() {
-  const [username, setUsername] = useState("");
+const API_BASE = "http://127.0.0.1:8000";
+
+export default function App() {
+  const [company, setCompany] = useState("א");
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  
+  // מודלים
+  const [addModal, setAddModal] = useState(null); // {cat, day}
+  const [detailTask, setDetailTask] = useState(null);
+  const [inputTitle, setInputTitle] = useState("");
 
-  const fetchTasks = () => {
+  const loadTasks = useCallback(async () => {
     setLoading(true);
-    fetch(`http://localhost:8000/tasks/${username}`)
-      .then(res => {
-        if (!res.ok) throw new Error("No tasks found");
-        return res.json();
-      })
-      .then(data => {
-        setTasks(data.tasks);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setError(err.message);
-        setLoading(false);
-      });
+    try {
+      const res = await fetch(`${API_BASE}/tasks/${company}`);
+      const data = await res.json();
+      setTasks(data);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      alert("שגיאה בחיבור לשרת. וודא ששרת הפייתון רץ בפורט 8000");
+    } finally {
+      setLoading(false);
+    }
+  }, [company]);
+
+  useEffect(() => { loadTasks(); }, [loadTasks]);
+
+  const addTask = async () => {
+    if (!inputTitle) return;
+    await fetch(`${API_BASE}/tasks/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company, category: addModal.cat, day: addModal.day, title: inputTitle })
+    });
+    setInputTitle("");
+    setAddModal(null);
+    loadTasks();
   };
 
-  // Helper to get tasks for a cell
-  const getTasks = (category, day) => {
-    return tasks
-      .filter(t => t.category === category && t.day === day)
-      .map(t => t.slot);
+  const toggleTaskStatus = async (task) => {
+    await fetch(`${API_BASE}/tasks/${task.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_done: !task.is_done })
+    });
+    setDetailTask(null);
+    loadTasks();
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1>Weekly Tasks</h1>
-      <input
-        placeholder="Enter username"
-        value={username}
-        onChange={e => setUsername(e.target.value)}
-      />
-      <button onClick={fetchTasks}>Load Tasks</button>
+    <div dir="rtl" style={{ padding: "20px", fontFamily: "Segoe UI, Tahoma, Geneva, Verdana, sans-serif" }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h1>ניהול משימות לו"ז</h1>
+        <select value={company} onChange={(e) => setCompany(e.target.value)} style={{ padding: "10px", fontSize: "16px" }}>
+          {COMPANIES.map(c => <option key={c} value={c}>פלוגה {c}</option>)}
+        </select>
+      </header>
 
-      {loading && <p>Loading...</p>}
-      {error && <p style={{ color: "red" }}>{error}</p>}
-
-      {tasks.length > 0 && (
-        <table border={1} cellPadding={5} style={{ marginTop: 20 }}>
+      {loading ? <p>טוען נתונים...</p> : (
+        <table border="1" style={{ width: "100%", borderCollapse: "collapse", marginTop: "20px" }}>
           <thead>
-            <tr>
-              <th>Category</th>
-              {DAYS.map(day => (
-                <th key={day}>{day}</th>
-              ))}
+            <tr style={{ backgroundColor: "#f4f4f4" }}>
+              <th style={{ padding: "10px" }}>קטגוריה / יום</th>
+              {DAYS.map(d => <th key={d}>{d}</th>)}
             </tr>
           </thead>
           <tbody>
             {CATEGORIES.map(cat => (
               <tr key={cat}>
-                <td>{cat}</td>
+                <td style={{ fontWeight: "bold", padding: "10px", backgroundColor: "#fafafa" }}>{cat}</td>
                 {DAYS.map(day => (
-                  <td key={day}>
-                    {getTasks(cat, day).map((slot, i) => (
-                      <div key={i}>{slot}</div>
+                  <td 
+                    key={day} 
+                    onClick={() => setAddModal({ cat, day })}
+                    style={{ height: "60px", verticalAlign: "top", cursor: "pointer", position: "relative" }}
+                  >
+                    {tasks.filter(t => t.category === cat && t.day === day).map(t => (
+                      <div 
+                        key={t.id}
+                        onClick={(e) => { e.stopPropagation(); setDetailTask(t); }}
+                        style={{
+                          backgroundColor: t.is_done ? "#c3e6cb" : "#f5c6cb",
+                          fontSize: "12px", margin: "2px", padding: "4px", borderRadius: "4px",
+                          border: "1px solid #ddd"
+                        }}
+                      >
+                        {t.title}
+                      </div>
                     ))}
                   </td>
                 ))}
@@ -73,8 +101,50 @@ function App() {
           </tbody>
         </table>
       )}
+
+      {/* חלון הוספת משימה */}
+      {addModal && (
+        <div style={modalStyle}>
+          <div style={modalContentStyle}>
+            <h3>הוספת משימה ל{addModal.cat} ביום {addModal.day}</h3>
+            <input 
+              autoFocus
+              style={{ width: "90%", padding: "10px" }} 
+              value={inputTitle} 
+              onChange={e => setInputTitle(e.target.value)}
+              placeholder="שם המשימה..."
+            />
+            <div style={{ marginTop: "15px" }}>
+              <button onClick={addTask} style={{ marginLeft: "10px" }}>שמור</button>
+              <button onClick={() => setAddModal(null)}>ביטול</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* חלון פרטי משימה */}
+      {detailTask && (
+        <div style={modalStyle}>
+          <div style={modalContentStyle}>
+            <h3>פרטי משימה</h3>
+            <p><strong>משימה:</strong> {detailTask.title}</p>
+            <p><strong>סטטוס:</strong> {detailTask.is_done ? "✅ בוצע" : "❌ לא בוצע"}</p>
+            <button onClick={() => toggleTaskStatus(detailTask)} style={{ marginLeft: "10px" }}>
+              סמן כ{detailTask.is_done ? "לא בוצע" : "בוצע"}
+            </button>
+            <button onClick={() => setDetailTask(null)}>סגור</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-export default App;
+const modalStyle = {
+  position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+  backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000
+};
+
+const modalContentStyle = {
+  backgroundColor: "white", padding: "30px", borderRadius: "10px", textAlign: "center", minWidth: "300px"
+};
