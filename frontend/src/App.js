@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // --- 1. Supabase Config ---
-const SUPABASE_URL = "http://localhost:54321";
-const SUPABASE_KEY = "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH";
+const SUPABASE_URL = "https://stxeyhqnikhkdfuaxfxc.supabase.co";
+const SUPABASE_KEY = "sb_publishable_xDr7SOAxBPly03gR_sc6Fw_4Tvj_hQW";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];

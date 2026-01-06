@@ -7,9 +7,9 @@ from supabase import create_client, Client
 app = FastAPI()
 
 # --- 1. Supabase Configuration ---
-SUPABASE_URL = "http://localhost:54321"
+SUPABASE_URL = "https://stxeyhqnikhkdfuaxfxc.supabase.co"
 # It is recommended to use the SERVICE_ROLE_KEY for the backend to bypass RLS
-SUPABASE_KEY = "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH"
+SUPABASE_KEY = "sb_publishable_xDr7SOAxBPly03gR_sc6Fw_4Tvj_hQW"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app.add_middleware(
