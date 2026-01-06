@@ -1,86 +1,77 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
+
+const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const CATEGORIES = ["Food", "Clean", "Sleep"];
 
 function App() {
-  const [role, setRole] = useState(null); // "commander" or "cadet"
-  const [commanders, setCommanders] = useState([]);
-  const [selectedCommander, setSelectedCommander] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [username, setUsername] = useState("");
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    // Fetch data from backend
-    fetch("http://localhost:8000/commanders")
-      .then((res) => {
-        if (!res.ok) throw new Error("Network response was not ok");
+  const fetchTasks = () => {
+    setLoading(true);
+    fetch(`http://localhost:8000/tasks/${username}`)
+      .then(res => {
+        if (!res.ok) throw new Error("No tasks found");
         return res.json();
       })
-      .then((data) => {
-        setCommanders(data);
+      .then(data => {
+        setTasks(data.tasks);
         setLoading(false);
       })
-      .catch((err) => {
-        console.error("Fetch error:", err);
-        setError("Could not load data from backend");
+      .catch(err => {
+        console.error(err);
+        setError(err.message);
         setLoading(false);
       });
-  }, []);
+  };
 
-  if (loading) return <div style={{ padding: 20 }}>Loading...</div>;
-  if (error) return <div style={{ padding: 20 }}>{error}</div>;
+  // Helper to get tasks for a cell
+  const getTasks = (category, day) => {
+    return tasks
+      .filter(t => t.category === category && t.day === day)
+      .map(t => t.slot);
+  };
 
   return (
     <div style={{ padding: 20 }}>
-      {!role && (
-        <>
-          <h1>Choose Your Role</h1>
-          <button onClick={() => setRole("commander")}>Commander</button>{" "}
-          <button onClick={() => setRole("cadet")}>Cadet</button>
-        </>
-      )}
+      <h1>Weekly Tasks</h1>
+      <input
+        placeholder="Enter username"
+        value={username}
+        onChange={e => setUsername(e.target.value)}
+      />
+      <button onClick={fetchTasks}>Load Tasks</button>
 
-      {role === "commander" && (
-        <>
-          <h2>Commanders</h2>
-          {commanders.map((c) => (
-            <div
-              key={c.id}
-              style={{
-                cursor: "pointer",
-                border: "1px solid gray",
-                padding: 8,
-                margin: 5,
-              }}
-              onClick={() => setSelectedCommander(c)}
-            >
-              {c.name} ({c.cadets.length} cadets)
-            </div>
-          ))}
+      {loading && <p>Loading...</p>}
+      {error && <p style={{ color: "red" }}>{error}</p>}
 
-          {selectedCommander && (
-            <div style={{ marginTop: 15 }}>
-              <h3>Cadets under {selectedCommander.name}</h3>
-              {selectedCommander.cadets.length === 0 ? (
-                <p>No cadets assigned</p>
-              ) : (
-                <ul>
-                  {selectedCommander.cadets.map((cd) => (
-                    <li key={cd.id}>{cd.name}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {role === "cadet" && (
-        <>
-          <h2>Cadet View</h2>
-          <p>
-            As a cadet, you will see your assigned commander here. This data
-            comes from the backend.
-          </p>
-        </>
+      {tasks.length > 0 && (
+        <table border={1} cellPadding={5} style={{ marginTop: 20 }}>
+          <thead>
+            <tr>
+              <th>Category</th>
+              {DAYS.map(day => (
+                <th key={day}>{day}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {CATEGORIES.map(cat => (
+              <tr key={cat}>
+                <td>{cat}</td>
+                {DAYS.map(day => (
+                  <td key={day}>
+                    {getTasks(cat, day).map((slot, i) => (
+                      <div key={i}>{slot}</div>
+                    ))}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );
