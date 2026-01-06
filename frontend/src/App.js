@@ -1,27 +1,31 @@
 import React, { useState, useEffect, useCallback } from "react";
 
+// הגדרות קבועות
 const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const CATEGORIES = ["מבחן/מטלה", "הורדת מטלה", "תג\"ב", "ה\"ה", "א\"ת", "משוב", "סגל", "סימולציות"];
 const COMPANIES = ["א", "ב", "ג", "ד", "ה"];
 const API_BASE = "http://127.0.0.1:8000";
-const START_DATE = new Date("2026-01-04");
+const START_DATE = new Date("2026-01-04"); // יום ראשון של שבוע 0
 
 export default function App() {
+  // --- State ---
   const [company, setCompany] = useState("א");
   const [currentWeek, setCurrentWeek] = useState(0);
   const [tasks, setTasks] = useState([]);
   const [allTasks, setAllTasks] = useState([]);
   const [cadets, setCadets] = useState([]);
 
-  // Modals state
+  // ניהול חלונות קופצים
   const [addModal, setAddModal] = useState(null);
   const [detailTask, setDetailTask] = useState(null);
   const [askMoveModal, setAskMoveModal] = useState(null);
   const [dateMoveModal, setDateMoveModal] = useState(null);
-  const [selectedCadetTasks, setSelectedCadetTasks] = useState(null); // חלון משימות צוער
+  const [selectedCadetTasks, setSelectedCadetTasks] = useState(null);
 
-  const [form, setForm] = useState({ title: "", assigned_cadet: "", due_date: "" });
+  // טופס הוספה
+  const [form, setForm] = useState({ title: "", description: "", assigned_cadet: "", due_date: "" });
 
+  // --- Fetch Data ---
   const fetchData = useCallback(async () => {
     try {
       const [tRes, allRes, cRes] = await Promise.all([
@@ -32,11 +36,12 @@ export default function App() {
       setTasks(await tRes.json());
       setAllTasks(await allRes.json());
       setCadets(await cRes.json());
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("Error fetching data:", err); }
   }, [company, currentWeek]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // --- Helpers ---
   const getWeekDaysWithDates = () => {
     return DAYS.map((dayName, index) => {
       const date = new Date(START_DATE);
@@ -63,6 +68,7 @@ export default function App() {
     return { label: "בתהליך", color: "#92400e", bg: "#fef3c7", border: "#f59e0b" };
   };
 
+  // --- Actions ---
   const handleUpdateClick = (task) => {
     if (task.is_done && (task.category === "ה\"ה" || task.category === "א\"ת")) {
       setDetailTask(null);
@@ -104,80 +110,63 @@ export default function App() {
   };
 
   const handleSave = async () => {
+    if (!form.title) return alert("חובה להזין כותרת");
     await fetch(`${API_BASE}/tasks/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, company, week: currentWeek, category: addModal.cat, day: addModal.day })
     });
-    closeAll(); fetchData();
+    closeAll(); 
+    fetchData();
   };
 
   const closeAll = () => { 
     setAddModal(null); setDetailTask(null); setAskMoveModal(null); 
     setDateMoveModal(null); setSelectedCadetTasks(null);
-    setForm({title:"", assigned_cadet:"", due_date:""}); 
+    setForm({title:"", description: "", assigned_cadet:"", due_date:""}); 
   };
 
   return (
     <div dir="rtl" style={s.container}>
+      {/* סרגל צד */}
       <aside style={s.sidebar}>
         <div style={s.sideHeader}>
-          <h3>ניהול פלוגה {company}</h3>
-          <select value={company} onChange={e=>setCompany(e.target.value)} style={s.input}>
+          <h3 style={{margin:0}}>ניהול פלוגה {company}</h3>
+          <select value={company} onChange={e=>setCompany(e.target.value)} style={{...s.input, marginTop:'10px', padding:'8px'}}>
             {COMPANIES.map(c=><option key={c} value={c}>פלוגה {c}</option>)}
           </select>
         </div>
-        <div style={{padding:'15px'}}>
-          <p style={s.label}>רשימת צוערים (לחץ לצפייה במשימות):</p>
+        <div style={{padding:'15px', flex:1, overflowY:'auto'}}>
+          <p style={s.label}>צוערים (לחץ לפירוט):</p>
           {cadets.map(c => {
-            const cadetTasks = allTasks.filter(t => t.assigned_cadet === c);
-            return (
-              <div key={c} style={s.cadetItem} onClick={() => setSelectedCadetTasks({name: c, list: cadetTasks})}>
+             const cTasks = allTasks.filter(t => t.assigned_cadet === c);
+             return (
+              <div key={c} style={s.cadetItem} onClick={() => setSelectedCadetTasks({name: c, list: cTasks})}>
                 <span>👤 {c}</span>
-                <span style={s.taskCount}>{cadetTasks.length}</span>
+                <span style={s.taskCount}>{cTasks.length}</span>
               </div>
-            );
+             );
           })}
         </div>
       </aside>
 
+      {/* תוכן מרכזי */}
       <main style={s.main}>
-        {/* טבלת ריכוז עליונה */}
-        <section style={s.dash}>
-          <h3 style={{marginTop:0}}>ריכוז משימות פלוגתי</h3>
-          <div style={{maxHeight:'180px', overflowY:'auto'}}>
-            <table style={s.sumTable}>
-              <thead><tr><th>משימה</th><th>קטגוריה</th><th>יעד</th><th>צוער</th><th>סטטוס</th></tr></thead>
-              <tbody>
-                {allTasks.map(t => (
-                  <tr key={t.id} onClick={()=>setDetailTask(t)} style={s.row}>
-                    <td><b>{t.title}</b></td>
-                    <td>{t.category}</td>
-                    <td style={{color: getStatus(t).label === "באיחור" ? "red" : "inherit"}}>{t.due_date || "-"}</td>
-                    <td>{t.assigned_cadet || "-"}</td>
-                    <td><span style={{...s.stBadge, background: getStatus(t).bg, color: getStatus(t).color}}>{getStatus(t).label}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {/* הלוח השבועי */}
         <div style={s.tableBox}>
           <div style={s.weekHead}>
             <button style={s.nav} onClick={()=>setCurrentWeek(w=>Math.max(0,w-1))}>▶</button>
             <h2 style={{margin:0}}>שבוע {currentWeek}</h2>
             <button style={s.nav} onClick={()=>setCurrentWeek(w=>w+1)}>◀</button>
           </div>
+          
           <table style={s.mainTable}>
             <thead>
               <tr>
                 <th style={s.th}>קטגוריה</th>
                 {getWeekDaysWithDates().map((item, idx) => (
                   <th key={idx} style={s.th}>
-                    <div>{item.dayName}</div>
-                    <div style={{fontSize:'10px', fontWeight:'normal', opacity:0.8}}>{item.formattedDate}</div>
+                    <div style={{fontSize:'14px'}}>{item.dayName}</div>
+                    <div style={{fontSize:'11px', fontWeight:'normal', opacity:0.8}}>{item.formattedDate}</div>
                   </th>
                 ))}
               </tr>
@@ -191,7 +180,7 @@ export default function App() {
                       {tasks.filter(t=>t.category===cat && t.day===day).map(t=>(
                         <div key={t.id} onClick={e=>{e.stopPropagation(); setDetailTask(t)}} style={{...s.card, borderRight: `5px solid ${getStatus(t).border}`}}>
                           <div style={{fontWeight:'bold', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{t.title}</div>
-                          <div style={{fontSize:'10px'}}>{t.assigned_cadet}</div>
+                          <div style={{fontSize:'10px', color:'#64748b'}}>{t.assigned_cadet || "ללא שיוך"}</div>
                         </div>
                       ))}
                     </td>
@@ -203,40 +192,90 @@ export default function App() {
         </div>
       </main>
 
-      {/* --- מודל: רשימת משימות של צוער ספציפי --- */}
-      {selectedCadetTasks && (
+      {/* --- מודל: הוספת משימה (רחב) --- */}
+      {addModal && (
         <div style={s.ovl} onClick={closeAll}>
-          <div style={{...s.modal, width:'450px'}} onClick={e=>e.stopPropagation()}>
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid #eee', paddingBottom:'10px'}}>
-              <h3 style={{margin:0}}>משימות של: {selectedCadetTasks.name}</h3>
-              <button onClick={closeAll} style={{background:'none', border:'none', fontSize:'20px', cursor:'pointer'}}>×</button>
+          <div style={{...s.modal, width:'550px'}} onClick={e=>e.stopPropagation()}>
+            <h2 style={{margin:0}}>משימה חדשה: {addModal.cat}</h2>
+            <p style={{margin:0, color:'#64748b'}}>יום {addModal.day}, שבוע {currentWeek}</p>
+            
+            <label style={s.label}>כותרת המשימה</label>
+            <input placeholder="לדוגמה: הורדת התנסות ממש" style={s.input} onChange={e=>setForm({...form, title:e.target.value})}/>
+            
+            <label style={s.label}>פירוט והנחיות</label>
+            <textarea placeholder="פרט כאן מה נדרש לבצע..." style={{...s.input, minHeight:'120px', resize:'vertical'}} onChange={e=>setForm({...form, description:e.target.value})} />
+            
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
+              <div>
+                <label style={s.label}>צוער אחראי</label>
+                <select style={s.input} onChange={e=>setForm({...form, assigned_cadet:e.target.value})}>
+                  <option value="">בחר צוער...</option>
+                  {cadets.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={s.label}>תאריך יעד (Deadline)</label>
+                <input type="date" style={s.input} onChange={e=>setForm({...form, due_date:e.target.value})}/>
+              </div>
             </div>
-            <div style={{maxHeight:'400px', overflowY:'auto', marginTop:'15px'}}>
-              {selectedCadetTasks.list.length === 0 ? (
-                <p style={{textAlign:'center', color:'#666'}}>אין משימות משויכות לצוער זה.</p>
-              ) : (
-                selectedCadetTasks.list.map(t => (
-                  <div key={t.id} style={s.cadetTaskRow} onClick={() => { setDetailTask(t); setSelectedCadetTasks(null); }}>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:'bold'}}>{t.title}</div>
-                      <div style={{fontSize:'12px', color:'#666'}}>{t.category} | שבוע {t.week}</div>
-                    </div>
-                    <div style={{textAlign:'left'}}>
-                       <div style={{fontSize:'11px', marginBottom:'4px'}}>יעד: {t.due_date || "ללא"}</div>
-                       <span style={{...s.stBadge, background: getStatus(t).bg, color: getStatus(t).color, fontSize:'10px'}}>
-                        {getStatus(t).label}
-                       </span>
-                    </div>
-                  </div>
-                ))
-              )}
+            
+            <div style={{display:'flex', gap:'12px', marginTop:'10px'}}>
+              <button style={{...s.btnP, flex:2}} onClick={handleSave}>צור משימה</button>
+              <button style={{...s.btnD, flex:1, background:'#f1f5f9'}} onClick={closeAll}>ביטול</button>
             </div>
-            <button style={{...s.btnP, marginTop:'15px'}} onClick={closeAll}>סגור</button>
           </div>
         </div>
       )}
 
-      {/* --- שאר המודלים (אותו דבר כמו קודם) --- */}
+      {/* --- מודל: עריכה ופירוט (רחב) --- */}
+      {detailTask && (
+        <div style={s.ovl} onClick={closeAll}>
+          <div style={{...s.modal, width:'550px'}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+              <h2 style={{margin:0}}>עריכת משימה</h2>
+              <span style={{...s.stBadge, background: getStatus(detailTask).bg, color: getStatus(detailTask).color}}>
+                {getStatus(detailTask).label}
+              </span>
+            </div>
+            
+            <label style={s.label}>כותרת</label>
+            <input value={detailTask.title} style={s.input} onChange={e=>setDetailTask({...detailTask, title:e.target.value})}/>
+            
+            <label style={s.label}>פירוט מורחב</label>
+            <textarea 
+                value={detailTask.description || ""} 
+                style={{...s.input, minHeight:'150px', resize:'vertical'}} 
+                onChange={e=>setDetailTask({...detailTask, description:e.target.value})}
+            />
+            
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
+                <div>
+                    <label style={s.label}>צוער אחראי</label>
+                    <select value={detailTask.assigned_cadet} style={s.input} onChange={e=>setDetailTask({...detailTask, assigned_cadet:e.target.value})}>
+                        <option value="">ללא שיוך</option>
+                        {cadets.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label style={s.label}>תאריך יעד</label>
+                    <input type="date" value={detailTask.due_date || ""} style={s.input} onChange={e=>setDetailTask({...detailTask, due_date:e.target.value})}/>
+                </div>
+            </div>
+
+            <label style={{display:'flex', alignItems:'center', gap:'12px', background:'#eff6ff', padding:'15px', borderRadius:'12px', cursor:'pointer', border:'1px solid #dbeafe'}}>
+                <input type="checkbox" style={{width:'22px', height:'22px'}} checked={detailTask.is_done} onChange={e=>setDetailTask({...detailTask, is_done:e.target.checked})}/> 
+                <span style={{fontWeight:'bold', color:'#1e40af'}}>סמן כבוצע (יציע מעבר לשלב הבא)</span>
+            </label>
+
+            <div style={{display:'flex', gap:'12px'}}>
+              <button style={{...s.btnP, flex:2}} onClick={()=>handleUpdateClick(detailTask)}>שמור שינויים</button>
+              <button style={{...s.btnD, flex:1, background:'#fee2e2', color:'#b91c1c'}} onClick={async () => { if(window.confirm("למחוק?")) { await fetch(`${API_BASE}/tasks/${detailTask.id}`, {method:"DELETE"}); closeAll(); fetchData(); } }}>מחק</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- מודלים נוספים (שאלה, תאריך העברה, רשימת צוער) --- */}
       {askMoveModal && (
         <div style={s.ovl}>
           <div style={s.modal}>
@@ -245,7 +284,7 @@ export default function App() {
               <p>האם להעביר לשלב ה<b>{askMoveModal.category === "ה\"ה" ? "א\"ת" : "משוב"}</b>?</p>
             </div>
             <div style={{display:'flex', gap:'10px'}}>
-              <button style={{...s.btnP, flex:1}} onClick={proceedToMove}>כן, העבר</button>
+              <button style={{...s.btnP, flex:1}} onClick={proceedToMove}>כן, העבר שלב</button>
               <button style={{...s.btnD, flex:1, background:'#f1f5f9'}} onClick={() => saveUpdate(askMoveModal)}>לא, רק סיים</button>
             </div>
           </div>
@@ -256,52 +295,33 @@ export default function App() {
         <div style={s.ovl}>
           <div style={s.modal}>
             <h3 style={{color:'#2563eb'}}>הגדרת {dateMoveModal.nextCat}</h3>
-            <label style={s.label}>תאריך בלוח:</label>
+            <label style={s.label}>איפה למקם בלוח (תאריך):</label>
             <input type="date" style={s.input} onChange={e=>setDateMoveModal({...dateMoveModal, targetDate:e.target.value})}/>
-            <label style={s.label}>דדליין חדש:</label>
+            <label style={s.label}>דדליין חדש למשימה:</label>
             <input type="date" style={s.input} onChange={e=>setDateMoveModal({...dateMoveModal, newDueDate:e.target.value})}/>
-            <button style={s.btnP} onClick={confirmMove}>אשר העברה</button>
+            <button style={s.btnP} onClick={confirmMove}>אשר וצור משימה</button>
           </div>
         </div>
       )}
 
-      {detailTask && (
+      {selectedCadetTasks && (
         <div style={s.ovl} onClick={closeAll}>
-          <div style={s.modal} onClick={e=>e.stopPropagation()}>
-            <h3>עריכת משימה</h3>
-            <input value={detailTask.title} style={s.input} onChange={e=>setDetailTask({...detailTask, title:e.target.value})}/>
-            <select value={detailTask.assigned_cadet} style={s.input} onChange={e=>setDetailTask({...detailTask, assigned_cadet:e.target.value})}>
-              <option value="">בחר צוער</option>
-              {cadets.map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
-            <input type="date" value={detailTask.due_date || ""} style={s.input} onChange={e=>setDetailTask({...detailTask, due_date:e.target.value})}/>
-            <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer'}}>
-                <input type="checkbox" style={{width:'18px', height:'18px'}} checked={detailTask.is_done} onChange={e=>setDetailTask({...detailTask, is_done:e.target.checked})}/> 
-                <span>סמן כבוצע</span>
-            </label>
-            <button style={s.btnP} onClick={()=>handleUpdateClick(detailTask)}>שמור עדכון</button>
-            <button style={{...s.btnD, background:'#fee2e2', color:'#b91c1c'}} onClick={async () => {
-                if(window.confirm("למחוק משימה זו?")) {
-                    await fetch(`${API_BASE}/tasks/${detailTask.id}`, { method: "DELETE" });
-                    closeAll(); fetchData();
-                }
-            }}>מחק משימה</button>
-          </div>
-        </div>
-      )}
-
-      {addModal && (
-        <div style={s.ovl} onClick={closeAll}>
-          <div style={s.modal} onClick={e=>e.stopPropagation()}>
-            <h3>חדש: {addModal.cat} ({addModal.day})</h3>
-            <input placeholder="כותרת המשימה" style={s.input} onChange={e=>setForm({...form, title:e.target.value})}/>
-            <select style={s.input} onChange={e=>setForm({...form, assigned_cadet:e.target.value})}>
-              <option value="">שייך לצוער</option>
-              {cadets.map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
-            <label style={s.label}>תאריך יעד:</label>
-            <input type="date" style={s.input} onChange={e=>setForm({...form, due_date:e.target.value})}/>
-            <button style={s.btnP} onClick={handleSave}>צור משימה</button>
+          <div style={{...s.modal, width:'500px'}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex', justifyContent:'space-between', borderBottom:'1px solid #eee', paddingBottom:'10px'}}>
+              <h3 style={{margin:0}}>משימות: {selectedCadetTasks.name}</h3>
+              <button onClick={closeAll} style={{border:'none', background:'none', cursor:'pointer', fontSize:'20px'}}>×</button>
+            </div>
+            <div style={{maxHeight:'400px', overflowY:'auto', marginTop:'10px'}}>
+              {selectedCadetTasks.list.map(t => (
+                <div key={t.id} style={s.cadetTaskRow} onClick={() => { setDetailTask(t); setSelectedCadetTasks(null); }}>
+                  <div>
+                    <div style={{fontWeight:'bold'}}>{t.title}</div>
+                    <div style={{fontSize:'12px', color:'#666'}}>{t.category} | שבוע {t.week}</div>
+                  </div>
+                  <span style={{...s.stBadge, background: getStatus(t).bg, color: getStatus(t).color}}>{getStatus(t).label}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -309,30 +329,28 @@ export default function App() {
   );
 }
 
+// --- Styles ---
 const s = {
-  container: { display:'flex', height:'100vh', direction:'rtl', fontFamily:'system-ui, sans-serif', background:'#f8fafc', color:'#1e293b' },
-  sidebar: { width:'260px', background:'#fff', borderLeft:'1px solid #e2e8f0', display:'flex', flexDirection:'column', boxShadow:'2px 0 5px rgba(0,0,0,0.02)' },
+  container: { display:'flex', height:'100vh', direction:'rtl', fontFamily:'system-ui, -apple-system, sans-serif', background:'#f8fafc', color:'#1e293b' },
+  sidebar: { width:'260px', background:'#fff', borderLeft:'1px solid #e2e8f0', display:'flex', flexDirection:'column', boxShadow:'2px 0 10px rgba(0,0,0,0.02)' },
   sideHeader: { padding:'20px', borderBottom:'1px solid #f1f5f9', background:'#f8fafc' },
   main: { flex:1, padding:'24px', overflowY:'auto' },
-  dash: { background:'#fff', padding:'20px', borderRadius:'16px', marginBottom:'24px', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' },
-  sumTable: { width:'100%', borderCollapse:'collapse', fontSize:'13px', textAlign:'center' },
-  row: { cursor:'pointer', borderBottom:'1px solid #f1f5f9', transition:'0.2s' },
-  stBadge: { padding:'4px 10px', borderRadius:'99px', fontSize:'11px', fontWeight:'700' },
-  tableBox: { background:'#fff', padding:'20px', borderRadius:'16px', boxShadow:'0 1px 3px rgba(0,0,0,0.05)', overflowX:'auto' },
-  weekHead: { display:'flex', justifyContent:'center', alignItems:'center', gap:'24px', marginBottom:'20px' },
-  mainTable: { width:'100%', borderCollapse:'collapse', tableLayout:'fixed', minWidth:'800px' },
-  th: { background:'#1e293b', color:'#fff', padding:'12px', fontSize:'13px', border:'1px solid #334155' },
-  td: { border:'1px solid #f1f5f9', height:'95px', verticalAlign:'top', padding:'6px', cursor:'pointer', transition:'0.2s' },
-  catTd: { background:'#f8fafc', fontWeight:'700', border:'1px solid #f1f5f9', textAlign:'center', fontSize:'13px' },
-  card: { background:'#fff', padding:'8px', borderRadius:'8px', marginBottom:'6px', fontSize:'12px', border:'1px solid #e2e8f0', boxShadow:'0 2px 4px rgba(0,0,0,0.04)' },
-  ovl: { position:'fixed', inset:0, background:'rgba(15, 23, 42, 0.5)', backdropFilter:'blur(2px)', display:'flex', justifyContent:'center', alignItems:'center', zIndex:100 },
-  modal: { background:'#fff', padding:'24px', borderRadius:'16px', width:'350px', display:'flex', flexDirection:'column', gap:'16px', boxShadow:'0 20px 25px -5px rgba(0,0,0,0.1)' },
-  input: { padding:'10px', borderRadius:'8px', border:'1px solid #cbd5e1', width:'100%', boxSizing:'border-box', fontSize:'14px' },
-  btnP: { background:'#2563eb', color:'#fff', border:'none', padding:'12px', borderRadius:'8px', cursor:'pointer', fontWeight:'600' },
-  btnD: { padding:'12px', borderRadius:'8px', border:'none', cursor:'pointer', fontWeight:'600' },
-  nav: { border:'none', background:'#f1f5f9', width:'36px', height:'36px', borderRadius:'10px', cursor:'pointer', fontSize:'18px' },
-  cadetItem: { padding:'12px', borderBottom:'1px solid #f1f5f9', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center', borderRadius:'8px', margin:'2px 0' },
-  taskCount: { background:'#f1f5f9', padding:'2px 8px', borderRadius:'6px', fontSize:'11px', fontWeight:'700', color:'#475569' },
-  label: { fontSize:'12px', fontWeight:'700', color:'#64748b', marginBottom:'8px' },
-  cadetTaskRow: { padding:'12px', borderBottom:'1px solid #f8fafc', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center', borderRadius:'8px', transition:'0.2s' }
+  tableBox: { background:'#fff', padding:'25px', borderRadius:'20px', boxShadow:'0 4px 6px -1px rgba(0,0,0,0.1)', overflowX:'auto' },
+  weekHead: { display:'flex', justifyContent:'center', alignItems:'center', gap:'30px', marginBottom:'25px' },
+  mainTable: { width:'100%', borderCollapse:'collapse', tableLayout:'fixed', minWidth:'900px' },
+  th: { background:'#1e293b', color:'#fff', padding:'12px', border:'1px solid #334155', textAlign:'center' },
+  td: { border:'1px solid #f1f5f9', height:'110px', verticalAlign:'top', padding:'8px', cursor:'pointer', transition:'0.2s' },
+  catTd: { background:'#f8fafc', fontWeight:'bold', border:'1px solid #f1f5f9', textAlign:'center', width:'110px', color:'#475569' },
+  card: { background:'#fff', padding:'10px', borderRadius:'10px', marginBottom:'6px', border:'1px solid #e2e8f0', boxShadow:'0 2px 4px rgba(0,0,0,0.04)', transition:'0.2s' },
+  ovl: { position:'fixed', inset:0, background:'rgba(15, 23, 42, 0.5)', backdropFilter:'blur(3px)', display:'flex', justifyContent:'center', alignItems:'center', zIndex:100 },
+  modal: { background:'#fff', padding:'30px', borderRadius:'20px', display:'flex', flexDirection:'column', gap:'18px', boxShadow:'0 25px 50px -12px rgba(0,0,0,0.25)', maxHeight:'90vh', overflowY:'auto' },
+  input: { padding:'14px', borderRadius:'10px', border:'1px solid #cbd5e1', fontSize:'15px', width:'100%', boxSizing:'border-box', background:'#fcfcfc' },
+  label: { fontSize:'13px', fontWeight:'700', color:'#475569', marginBottom:'-12px' },
+  btnP: { background:'#2563eb', color:'#fff', padding:'14px', borderRadius:'10px', border:'none', cursor:'pointer', fontWeight:'700', fontSize:'15px' },
+  btnD: { padding:'14px', borderRadius:'10px', border:'none', cursor:'pointer', fontWeight:'700' },
+  nav: { width:'45px', height:'45px', borderRadius:'12px', border:'none', cursor:'pointer', background:'#f1f5f9', fontSize:'20px' },
+  cadetItem: { padding:'12px', borderBottom:'1px solid #f1f5f9', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center', borderRadius:'10px', margin:'2px 0' },
+  taskCount: { background:'#f1f5f9', padding:'3px 10px', borderRadius:'8px', fontSize:'12px', fontWeight:'800', color:'#475569' },
+  stBadge: { padding:'5px 12px', borderRadius:'99px', fontSize:'12px', fontWeight:'800' },
+  cadetTaskRow: { padding:'15px', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer', borderRadius:'10px' }
 };
