@@ -16,7 +16,7 @@ app.add_middleware(
 
 DB_FILE = "army_tasks.db"
 
-# מודלים
+# --- מודלים ---
 class TaskCreate(BaseModel):
     company: str
     category: str
@@ -25,15 +25,16 @@ class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = ""
     assigned_cadet: Optional[str] = ""
-    due_date: Optional[str] = "" # שדה חדש
+    due_date: Optional[str] = ""
 
 class TaskUpdate(BaseModel):
     title: str
     description: Optional[str] = ""
     is_done: bool
     assigned_cadet: str
-    due_date: Optional[str] = "" # שדה חדש
+    category: Optional[str] = None # הוספנו תמיכה בעדכון קטגוריה
 
+# --- אתחול בסיס הנתונים ---
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -48,12 +49,11 @@ def init_db():
             description TEXT,
             is_done BOOLEAN DEFAULT 0,
             assigned_cadet TEXT,
-            due_date TEXT  -- הוספת העמודה כאן
+            due_date TEXT
         )
     """)
     conn.commit()
     conn.close()
-
 
 init_db()
 
@@ -65,28 +65,42 @@ CADETS_DATA = {
     "ה": ["ליאור זיו", "שחר פרי", "טל מור"]
 }
 
+# --- נתיבים (Endpoints) ---
+
 @app.get("/cadets/{company}")
 def get_cadets(company: str):
     return CADETS_DATA.get(company, [])
 
-# משימות לשבוע ספציפי (לטבלה)
+# 1. שליפת משימות לשבוע ספציפי (חשוב: הוספנו category לשליפה)
 @app.get("/tasks/{company}/{week}")
 def get_tasks(company: str, week: int):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT id, category, day, title, description, is_done, assigned_cadet FROM tasks WHERE company = ? AND week = ?", (company, week))
+    c.execute("""
+        SELECT id, category, day, title, description, is_done, assigned_cadet, week 
+        FROM tasks 
+        WHERE company = ? AND week = ?
+    """, (company, week))
     rows = c.fetchall()
     conn.close()
-    return [{"id": r[0], "category": r[1], "day": r[2], "title": r[3], "description": r[4], "is_done": bool(r[5]), "assigned_cadet": r[6]} for r in rows]
+    return [
+        {
+            "id": r[0], "category": r[1], "day": r[2], "title": r[3], 
+            "description": r[4], "is_done": bool(r[5]), "assigned_cadet": r[6], "week": r[7]
+        } for r in rows
+    ]
 
-# --- התיקון הקריטי כאן ---
-# שליפת כל המשימות עם כל הפרטים עבור המודל בדשבורד
+# 2. שליפת כל המשימות (עבור הטבלה העליונה והסיידבר)
 @app.get("/tasks-all/{company}")
 def get_all_tasks(company: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # הוספנו title, description ו-week לשאילתה
-    c.execute("SELECT id, title, description, week, is_done, assigned_cadet FROM tasks WHERE company = ?", (company,))
+    # כאן אנחנו מוודאים שכל השדות, כולל category ו-day, נשלחים
+    c.execute("""
+        SELECT id, title, description, week, is_done, assigned_cadet, category, day 
+        FROM tasks 
+        WHERE company = ?
+    """, (company,))
     rows = c.fetchall()
     conn.close()
     return [
@@ -96,26 +110,35 @@ def get_all_tasks(company: str):
             "description": r[2], 
             "week": r[3], 
             "is_done": bool(r[4]), 
-            "assigned_cadet": r[5]
+            "assigned_cadet": r[5],
+            "category": r[6], # זה יתקן את הריבוע הריק
+            "day": r[7]
         } for r in rows
     ]
 
+# 3. הוספת משימה
 @app.post("/tasks/")
 def add_task(task: TaskCreate):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("INSERT INTO tasks (company, category, day, week, title, description, assigned_cadet) VALUES (?, ?, ?, ?, ?, ?, ?)",
-              (task.company, task.category, task.day, task.week, task.title, task.description, task.assigned_cadet))
+    c.execute("""
+        INSERT INTO tasks (company, category, day, week, title, description, assigned_cadet, due_date) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (task.company, task.category, task.day, task.week, task.title, task.description, task.assigned_cadet, task.due_date))
     conn.commit()
     conn.close()
     return {"status": "success"}
 
+# 4. עדכון משימה
 @app.put("/tasks/{task_id}")
 def update_task(task_id: int, task: TaskUpdate):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("UPDATE tasks SET title=?, description=?, is_done=?, assigned_cadet=? WHERE id=?",
-              (task.title, task.description, int(task.is_done), task.assigned_cadet, task_id))
+    c.execute("""
+        UPDATE tasks 
+        SET title=?, description=?, is_done=?, assigned_cadet=? 
+        WHERE id=?
+    """, (task.title, task.description, int(task.is_done), task.assigned_cadet, task_id))
     conn.commit()
     conn.close()
     return {"status": "updated"}
@@ -129,31 +152,52 @@ def delete_task(task_id: int):
     conn.close()
     return {"status": "deleted"}
 
-# --- Endpoint חדש להעברה אטומית בין שורות ---
 @app.post("/tasks/move/{task_id}")
 def move_task(task_id: int, next_category: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
-        # 1. שליפת המשימה הקיימת לפני המחיקה
+        # שליפת המשימה
         c.execute("SELECT company, day, week, title, description, assigned_cadet, due_date FROM tasks WHERE id = ?", (task_id,))
         row = c.fetchone()
-        
         if not row:
             return {"status": "error", "message": "Task not found"}
 
-        # פירוק הנתונים (Destructuring)
+        # הכנסה לקטגוריה החדשה כשהיא לא בוצעה
+        c.execute("""
+            INSERT INTO tasks (company, category, day, week, title, description, is_done, assigned_cadet, due_date) 
+            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+        """, (row[0], next_category, row[1], row[2], row[3], row[4], row[5], row[6]))
+
+        # מחיקת הישנה
+        c.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        conn.commit()
+        return {"status": "success"}
+    except Exception as e:
+        conn.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        conn.close()
+
+# 6. העברת משימה בין קטגוריות
+@app.post("/tasks/move/{task_id}")
+def move_task(task_id: int, next_category: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute("SELECT company, day, week, title, description, assigned_cadet, due_date FROM tasks WHERE id = ?", (task_id,))
+        row = c.fetchone()
+        if not row:
+            return {"status": "error", "message": "Task not found"}
+
         company, day, week, title, description, assigned_cadet, due_date = row
 
-        # 2. הכנסת המשימה החדשה לקטגוריה הבאה (is_done מתאפס ל-0)
         c.execute("""
             INSERT INTO tasks (company, category, day, week, title, description, is_done, assigned_cadet, due_date) 
             VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
         """, (company, next_category, day, week, title, description, assigned_cadet, due_date))
 
-        # 3. מחיקת המשימה הישנה מהשורה הקודמת
         c.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-
         conn.commit()
         return {"status": "success", "new_category": next_category}
     except Exception as e:
@@ -161,7 +205,7 @@ def move_task(task_id: int, next_category: str):
         return {"status": "error", "message": str(e)}
     finally:
         conn.close()
-        
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
