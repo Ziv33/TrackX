@@ -2,10 +2,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
+from typing import List, Optional
 
 app = FastAPI()
 
-# פתרון בעיית ה-Failed to fetch - מאפשר גישה מכל מקור
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,13 +16,17 @@ app.add_middleware(
 
 DB_FILE = "army_tasks.db"
 
+# מודלים ללא צוערים
 class TaskCreate(BaseModel):
     company: str
     category: str
     day: str
     title: str
+    description: Optional[str] = ""
 
-class StatusUpdate(BaseModel):
+class TaskUpdate(BaseModel):
+    title: str
+    description: str
     is_done: bool
 
 def init_db():
@@ -35,6 +39,7 @@ def init_db():
             category TEXT,
             day TEXT,
             title TEXT,
+            description TEXT,
             is_done BOOLEAN DEFAULT 0
         )
     """)
@@ -47,29 +52,42 @@ init_db()
 def get_tasks(company: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT id, category, day, title, is_done FROM tasks WHERE company = ?", (company,))
+    c.execute("SELECT id, category, day, title, description, is_done FROM tasks WHERE company = ?", (company,))
     rows = c.fetchall()
     conn.close()
-    return [{"id": r[0], "category": r[1], "day": r[2], "title": r[3], "is_done": bool(r[4])} for r in rows]
+    return [{
+        "id": r[0], "category": r[1], "day": r[2], "title": r[3], 
+        "description": r[4], "is_done": bool(r[5])
+    } for r in rows]
 
 @app.post("/tasks/")
 def add_task(task: TaskCreate):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("INSERT INTO tasks (company, category, day, title) VALUES (?, ?, ?, ?)",
-              (task.company, task.category, task.day, task.title))
+    c.execute("INSERT INTO tasks (company, category, day, title, description) VALUES (?, ?, ?, ?, ?)",
+              (task.company, task.category, task.day, task.title, task.description))
     conn.commit()
     conn.close()
     return {"status": "success"}
 
-@app.patch("/tasks/{task_id}")
-def update_status(task_id: int, data: StatusUpdate):
+@app.put("/tasks/{task_id}")
+def update_task(task_id: int, task: TaskUpdate):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("UPDATE tasks SET is_done = ? WHERE id = ?", (int(data.is_done), task_id))
+    c.execute("""UPDATE tasks SET title=?, description=?, is_done=? WHERE id=?""",
+              (task.title, task.description, int(task.is_done), task_id))
     conn.commit()
     conn.close()
     return {"status": "updated"}
+
+@app.delete("/tasks/{task_id}")
+def delete_task(task_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
 
 if __name__ == "__main__":
     import uvicorn
